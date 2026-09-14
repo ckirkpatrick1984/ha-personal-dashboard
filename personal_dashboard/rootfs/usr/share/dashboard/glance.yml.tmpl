@@ -1,0 +1,107 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+
+theme:
+  background-color: 225 14 15
+  primary-color: 220 75 65
+  contrast-multiplier: 1.1
+
+pages:
+  - name: My Day
+    columns:
+      - size: small
+        widgets:
+          - type: clock
+            hour-format: 12h
+            timezones:
+              - timezone: @@TIMEZONE@@
+                label: Home
+
+          - type: weather
+            units: imperial
+            hour-format: 12h
+            location: "@@WEATHER_LOCATION@@"
+
+          - type: calendar
+            first-day-of-week: sunday
+
+      - size: full
+        widgets:
+          - type: custom-api
+            title: Today's Tasks
+            cache: 1m
+            url: http://127.0.0.1:3456/api/v1/tasks?sort_by=due_date&order_by=asc&per_page=25&filter=done=false
+            headers:
+              Authorization: Bearer ${VIKUNJA_TOKEN}
+            template: |
+              {{ if eq .Response.StatusCode 200 }}
+                {{ $tasks := .JSON.Array "" }}
+                {{ if eq (len $tasks) 0 }}
+                  <p class="color-positive">Nothing due. You're clear.</p>
+                {{ else }}
+                  <ul class="list list-gap-10 collapsible-container" data-collapse-after="8">
+                  {{ range $tasks }}
+                    <li>
+                      <a class="size-h4 color-primary-if-not-visited" href="@@VIKUNJA_PUBLIC_URL@@tasks/{{ .Int "id" }}" target="_blank" rel="noreferrer">{{ .String "title" }}</a>
+                      <ul class="list-horizontal-text">
+                        {{ $p := .Int "priority" }}
+                        {{ if ge $p 4 }}<li class="color-negative">High</li>
+                        {{ else if eq $p 3 }}<li class="color-highlight">Medium</li>
+                        {{ end }}
+                        {{ $due := .String "due_date" }}
+                        {{ if and $due (ne $due "0001-01-01T00:00:00Z") }}
+                          <li {{ $due | parseRelativeTime "rfc3339" }}></li>
+                        {{ end }}
+                        {{ range .Array "labels" }}
+                          <li style="color: #{{ .String "hex_color" }}">{{ .String "title" }}</li>
+                        {{ end }}
+                      </ul>
+                    </li>
+                  {{ end }}
+                  </ul>
+                {{ end }}
+              {{ else if eq .Response.StatusCode 401 }}
+                <p class="color-negative">Vikunja rejected the API token.</p>
+                <p class="size-h5">Open Vikunja, create a token with read access to Tasks, then paste it into this add-on's "vikunja_token" option and restart.</p>
+              {{ else }}
+                <p class="color-negative">Vikunja returned {{ .Response.StatusCode }}.</p>
+                <p class="size-h5">Check the add-on log for details.</p>
+              {{ end }}
+
+          - type: rss
+            title: News
+            style: detailed-list
+            limit: 12
+            collapse-after: 5
+            cache: 30m
+            feeds:
+@@RSS_FEEDS@@
+
+      - size: small
+        widgets:
+          - type: bookmarks
+            groups:
+              - title: My Stuff
+                links:
+                  - title: Vikunja (all tasks)
+                    url: "@@VIKUNJA_PUBLIC_URL@@"
+                  - title: Home Assistant
+                    url: "@@HOME_ASSISTANT_URL@@"
+              - title: Daily
+                links:
+                  - title: Gmail
+                    url: https://mail.google.com/
+                  - title: Google Calendar
+                    url: https://calendar.google.com/
+
+          - type: monitor
+            cache: 5m
+            title: Services
+            sites:
+              - title: Vikunja
+                url: http://127.0.0.1:3456/
+                icon: si:todoist
+              - title: Home Assistant
+                url: "@@HOME_ASSISTANT_URL@@"
+                icon: si:homeassistant

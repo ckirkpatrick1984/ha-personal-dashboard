@@ -1,0 +1,18 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# Glance: the dashboard front end.
+# Waits for Vikunja so the task widget has something to talk to on first paint.
+
+VIKUNJA_TOKEN="$(bashio::config 'vikunja_token')"
+[[ "${VIKUNJA_TOKEN}" == "null" ]] && VIKUNJA_TOKEN=""
+export VIKUNJA_TOKEN
+
+for _ in $(seq 1 30); do
+    if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3456/api/v1/info; then
+        break
+    fi
+    sleep 1
+done
+
+bashio::log.info "Starting Glance on port 8080..."
+exec /usr/local/bin/glance --config /data/glance.yml

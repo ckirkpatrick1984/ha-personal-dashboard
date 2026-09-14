@@ -1,0 +1,9 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# Vikunja: task manager backend and web UI.
+
+bashio::log.info "Starting Vikunja..."
+cd /data || bashio::exit.nok "Could not enter /data"
+
+export VIKUNJA_SERVICE_ROOTPATH=/data
+exec /usr/local/bin/vikunja --config /data/vikunja.yml

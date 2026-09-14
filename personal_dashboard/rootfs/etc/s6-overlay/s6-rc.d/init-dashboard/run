@@ -1,0 +1,98 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# Generates the Vikunja and Glance configuration files from add-on options.
+set -euo pipefail
+
+VIKUNJA_PUBLIC_URL="$(bashio::config 'vikunja_public_url')"
+WEATHER_LOCATION="$(bashio::config 'weather_location')"
+HOME_ASSISTANT_URL="$(bashio::config 'home_assistant_url')"
+LOG_LEVEL="$(bashio::config 'log_level')"
+
+# Supervisor passes the system timezone in as TZ. Reading it from the
+# Supervisor API would require hassio_api access, which this add-on does not
+# request on purpose.
+TIMEZONE="$(bashio::config 'timezone')"
+if [[ -z "${TIMEZONE}" || "${TIMEZONE}" == "null" ]]; then
+    TIMEZONE="${TZ:-}"
+fi
+if [[ -z "${TIMEZONE}" ]]; then
+    TIMEZONE="UTC"
+    bashio::log.warning "No timezone detected; falling back to UTC."
+fi
+
+# Vikunja builds its frontend API URL from publicurl and will fail CORS if the
+# browser reaches it by any other name, so the trailing slash matters.
+[[ "${VIKUNJA_PUBLIC_URL}" != */ ]] && VIKUNJA_PUBLIC_URL="${VIKUNJA_PUBLIC_URL}/"
+
+mkdir -p /data/files
+
+# The signing secret must persist, or every restart logs all sessions out.
+if [[ ! -s /data/.service_secret ]]; then
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /data/.service_secret
+    chmod 600 /data/.service_secret
+    bashio::log.info "Generated a new Vikunja signing secret."
+fi
+SERVICE_SECRET="$(cat /data/.service_secret)"
+
+# Allow the browser to reach the API from the dashboard's origin as well as
+# Vikunja's own, otherwise login fails with an opaque "network error".
+VIKUNJA_ORIGIN="$(echo "${VIKUNJA_PUBLIC_URL}" | sed -E 's#^(https?://[^/]+)/.*#\1#')"
+VIKUNJA_HOST="$(echo "${VIKUNJA_ORIGIN}" | sed -E 's#^https?://##; s#:[0-9]+$##')"
+VIKUNJA_SCHEME="$(echo "${VIKUNJA_ORIGIN}" | sed -E 's#^(https?)://.*#\1#')"
+
+cat > /data/vikunja.yml <<EOF
+service:
+  interface: ":3456"
+  publicurl: "${VIKUNJA_PUBLIC_URL}"
+  secret: "${SERVICE_SECRET}"
+  enableregistration: true
+  timezone: "${TIMEZONE}"
+database:
+  type: sqlite
+  path: /data/vikunja.db
+files:
+  basepath: /data/files
+cors:
+  enable: true
+  origins:
+    - "${VIKUNJA_ORIGIN}"
+    - "${VIKUNJA_SCHEME}://${VIKUNJA_HOST}:8080"
+    - "http://localhost:8080"
+    - "http://localhost:3456"
+log:
+  level: "${LOG_LEVEL^^}"
+EOF
+
+# The RSS feed list is variable length, so it is injected rather than templated.
+: > /tmp/rss-feeds.yml
+if bashio::config.has_value 'rss_feeds'; then
+    for feed in $(bashio::config 'rss_feeds'); do
+        printf '              - url: %s\n' "${feed}" >> /tmp/rss-feeds.yml
+    done
+fi
+if [[ ! -s /tmp/rss-feeds.yml ]]; then
+    printf '              - url: https://hnrss.org/frontpage\n' >> /tmp/rss-feeds.yml
+fi
+
+awk -v rss="/tmp/rss-feeds.yml" '
+    /@@RSS_FEEDS@@/ { while ((getline line < rss) > 0) print line; next }
+    { print }
+' /usr/share/dashboard/glance.yml.tmpl > /tmp/glance-stage1.yml
+
+sed \
+    -e "s#@@TIMEZONE@@#${TIMEZONE}#g" \
+    -e "s#@@WEATHER_LOCATION@@#${WEATHER_LOCATION}#g" \
+    -e "s#@@VIKUNJA_PUBLIC_URL@@#${VIKUNJA_PUBLIC_URL}#g" \
+    -e "s#@@HOME_ASSISTANT_URL@@#${HOME_ASSISTANT_URL}#g" \
+    /tmp/glance-stage1.yml > /data/glance.yml
+
+rm -f /tmp/glance-stage1.yml /tmp/rss-feeds.yml
+
+if ! bashio::config.has_value 'vikunja_token'; then
+    bashio::log.warning "No vikunja_token set - the task widget will show an error."
+    bashio::log.warning "Register at ${VIKUNJA_PUBLIC_URL}, create an API token with"
+    bashio::log.warning "read access to Tasks, then paste it into the add-on options."
+fi
+
+bashio::log.info "Configuration written. Timezone: ${TIMEZONE}"
+bashio::log.info "Vikunja public URL: ${VIKUNJA_PUBLIC_URL}"

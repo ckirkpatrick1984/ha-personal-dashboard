@@ -1,0 +1,50 @@
+name: Personal Dashboard
+version: "0.1.0"
+slug: personal_dashboard
+description: >-
+  An at-a-glance daily dashboard (Glance) with a full-featured task manager
+  (Vikunja), running alongside Home Assistant.
+url: https://github.com/ckirkpatrick1984/ha-personal-dashboard
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: services
+boot: auto
+
+# Least privilege: this add-on does not use the Supervisor or Home Assistant
+# APIs, and does not mount any Home Assistant directory. It cannot read or
+# modify your Home Assistant configuration.
+hassio_api: false
+hassio_role: default
+homeassistant_api: false
+auth_api: false
+host_network: false
+map: []
+
+ports:
+  8080/tcp: 8080
+  3456/tcp: 3456
+ports_description:
+  8080/tcp: Glance dashboard web interface
+  3456/tcp: Vikunja task manager web interface and API
+
+options:
+  vikunja_public_url: "http://homeassistant:3456/"
+  weather_location: "New York, New York, United States"
+  home_assistant_url: "http://homeassistant/"
+  vikunja_token: ""
+  timezone: ""
+  rss_feeds:
+    - "https://hnrss.org/frontpage"
+  log_level: info
+
+schema:
+  vikunja_public_url: url
+  weather_location: str
+  home_assistant_url: url
+  vikunja_token: password?
+  timezone: str?
+  rss_feeds:
+    - str
+  log_level: list(debug|info|warning|error)
