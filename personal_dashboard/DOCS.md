@@ -32,6 +32,12 @@ If you use a plain IP address, use that instead:
 http://192.168.1.50:3456/
 ```
 
+> **Tailscale users:** use your machine's MagicDNS name, not its `100.x.y.z`
+> address. Home Assistant itself refuses to log in over a Tailscale IP
+> ("Invalid client id"), because `100.64.0.0/10` is not in the list of local
+> networks its OAuth check accepts. Vikunja has no such restriction, but
+> sticking to one hostname everywhere avoids confusion.
+
 Getting this wrong does not produce a helpful error. The Vikunja login page
 will load normally and then fail with a generic **"network error"** when you
 try to log in or register, because the browser blocks the cross-origin
