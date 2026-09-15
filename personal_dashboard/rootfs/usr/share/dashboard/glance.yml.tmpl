@@ -29,6 +29,71 @@ pages:
       - size: full
         widgets:
           - type: custom-api
+            title: Agenda
+            cache: 1m
+            url: http://127.0.0.1:8082/agenda
+            template: |
+              {{ if ne .Response.StatusCode 200 }}
+                <p class="color-negative">The digest service returned {{ .Response.StatusCode }}.</p>
+                <p class="size-h5 color-paragraph">Check the add-on log for details.</p>
+              {{ else if eq (.JSON.String "summary.headline") "No accounts configured" }}
+                <p class="size-h4 color-highlight">No calendar connected yet.</p>
+                <p class="size-h5 color-paragraph margin-top-15">
+                  Run <code>scripts/authorize-google.py</code> for the personal Gmail account and
+                  <code>scripts/authorize-microsoft.py</code> for work Outlook, then paste the
+                  refresh tokens into this add-on's options.
+                </p>
+              {{ else }}
+                <p class="size-h3 color-highlight text-truncate">{{ .JSON.String "summary.headline" }}</p>
+                <ul class="list-horizontal-text">
+                  <li>{{ .JSON.Int "summary.today_count" }} today</li>
+                  <li>{{ .JSON.Int "summary.tomorrow_count" }} tomorrow</li>
+                </ul>
+
+                {{ if .JSON.Bool "stale" }}
+                  <p class="size-h6 color-negative margin-top-15">
+                    Cached data &mdash; the last refresh failed.
+                  </p>
+                {{ end }}
+                {{ range .JSON.Array "errors" }}
+                  <p class="size-h6 color-negative">{{ .String "label" }} calendar unavailable.</p>
+                {{ end }}
+
+                {{ if eq (len (.JSON.Array "groups")) 0 }}
+                  <p class="color-positive margin-top-15">Nothing scheduled. Enjoy it.</p>
+                {{ end }}
+
+                {{ range .JSON.Array "groups" }}
+                  <p class="size-h6 color-paragraph margin-top-15">{{ .String "label" }}</p>
+                  <ul class="list list-gap-10 collapsible-container" data-collapse-after="6">
+                    {{ range .Array "events" }}
+                      <li>
+                        <div class="flex justify-between">
+                          {{ if .String "url" }}
+                            <a class="size-h4 color-primary-if-not-visited text-truncate" href="{{ .String "url" }}" target="_blank" rel="noreferrer">{{ .String "summary" }}</a>
+                          {{ else }}
+                            <span class="size-h4 text-truncate">{{ .String "summary" }}</span>
+                          {{ end }}
+                          <span class="size-h6 color-paragraph">{{ .String "source_label" }}</span>
+                        </div>
+                        <ul class="list-horizontal-text">
+                          {{ if .Bool "all_day" }}
+                            <li>{{ .String "time_label" }}</li>
+                          {{ else if .Bool "in_progress" }}
+                            <li class="color-positive">Now</li>
+                          {{ else }}
+                            <li class="color-highlight">{{ .String "time_label" }}</li>
+                          {{ end }}
+                          {{ if .String "duration_label" }}<li>{{ .String "duration_label" }}</li>{{ end }}
+                          {{ if .String "location" }}<li class="text-truncate">{{ .String "location" }}</li>{{ end }}
+                        </ul>
+                      </li>
+                    {{ end }}
+                  </ul>
+                {{ end }}
+              {{ end }}
+
+          - type: custom-api
             title: Today's Tasks
             cache: 1m
             url: http://127.0.0.1:3456/api/v1/tasks?sort_by=due_date&order_by=asc&per_page=25&filter=done=false
@@ -69,6 +134,58 @@ pages:
                 <p class="size-h5">Check the add-on log for details.</p>
               {{ end }}
 
+          - type: custom-api
+            title: Inbox
+            cache: 1m
+            url: http://127.0.0.1:8082/mail
+            template: |
+              {{ if ne .Response.StatusCode 200 }}
+                <p class="color-negative">The digest service returned {{ .Response.StatusCode }}.</p>
+              {{ else if eq (.JSON.String "summary.headline") "No accounts configured" }}
+                <p class="size-h4 color-highlight">No mailbox connected yet.</p>
+                <p class="size-h5 color-paragraph margin-top-15">
+                  The same two authorisation scripts cover mail as well as calendar &mdash;
+                  Gmail needs <code>gmail.readonly</code> and Outlook needs <code>Mail.Read</code>.
+                </p>
+              {{ else }}
+                <p class="size-h3 color-highlight">{{ .JSON.String "summary.headline" }}</p>
+                <ul class="list-horizontal-text">
+                  {{ range .JSON.Array "summary.by_account" }}
+                    <li>{{ .String "label" }} {{ .Int "unread" }}</li>
+                  {{ end }}
+                </ul>
+
+                {{ if .JSON.Bool "stale" }}
+                  <p class="size-h6 color-negative margin-top-15">
+                    Cached data &mdash; the last refresh failed.
+                  </p>
+                {{ end }}
+                {{ range .JSON.Array "errors" }}
+                  <p class="size-h6 color-negative">{{ .String "label" }} mailbox unavailable.</p>
+                {{ end }}
+
+                {{ if eq (len (.JSON.Array "messages")) 0 }}
+                  <p class="color-positive margin-top-15">Nothing unread.</p>
+                {{ else }}
+                  <ul class="list list-gap-10 collapsible-container margin-top-15" data-collapse-after="5">
+                    {{ range .JSON.Array "messages" }}
+                      <li>
+                        <div class="flex justify-between">
+                          <a class="size-h4 color-primary-if-not-visited text-truncate" href="{{ .String "url" }}" target="_blank" rel="noreferrer">{{ .String "subject" }}</a>
+                          <span class="size-h6 color-paragraph">{{ .String "source_label" }}</span>
+                        </div>
+                        <ul class="list-horizontal-text">
+                          <li class="text-truncate">{{ .String "from_name" }}</li>
+                          <li>{{ .String "time_label" }}</li>
+                          {{ if .Bool "important" }}<li class="color-negative">Important</li>{{ end }}
+                        </ul>
+                        {{ if .String "snippet" }}<p class="size-h6 color-paragraph text-truncate">{{ .String "snippet" }}</p>{{ end }}
+                      </li>
+                    {{ end }}
+                  </ul>
+                {{ end }}
+              {{ end }}
+
           - type: rss
             title: News
             style: detailed-list
@@ -94,6 +211,10 @@ pages:
                     url: https://mail.google.com/
                   - title: Google Calendar
                     url: https://calendar.google.com/
+                  - title: Outlook (work)
+                    url: https://outlook.office.com/mail/
+                  - title: Outlook Calendar
+                    url: https://outlook.office.com/calendar/
 
           - type: monitor
             cache: 5m
@@ -102,6 +223,9 @@ pages:
               - title: Vikunja
                 url: http://127.0.0.1:3456/
                 icon: si:todoist
+              - title: Calendar & mail digest
+                url: http://127.0.0.1:8082/health
+                icon: si:maildotru
               - title: Home Assistant
                 url: "@@HOME_ASSISTANT_URL@@"
                 icon: si:homeassistant

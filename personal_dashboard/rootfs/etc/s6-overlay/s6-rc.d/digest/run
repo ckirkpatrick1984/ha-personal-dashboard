@@ -1,0 +1,32 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# digest: fetches calendar and mail from Google and Microsoft 365, and serves a
+# normalised JSON summary to Glance on loopback.
+#
+# Bound to 127.0.0.1 only, and deliberately not listed in the add-on's `ports`.
+# The OAuth refresh tokens live in this process; nothing outside the container
+# has any business reaching it.
+
+if [[ ! -s /data/digest-config.json ]]; then
+    bashio::log.warning "No digest config found; the sidecar will not start."
+    # Sleep rather than exit: s6 would otherwise restart-loop this service, and
+    # `finish` would halt the whole add-on over an optional feature.
+    exec sleep infinity
+fi
+
+if ! grep -q '"accounts": *\[ *{' /data/digest-config.json; then
+    bashio::log.info "No calendar/mail accounts configured - digest idle."
+    bashio::log.info "Run scripts/authorize-google.py or scripts/authorize-microsoft.py,"
+    bashio::log.info "then paste the refresh token into this add-on's options."
+fi
+
+LOG_LEVEL="$(bashio::config 'log_level')"
+
+# The package lives at /usr/lib/digest, which is not on Alpine's default
+# sys.path (that is .../site-packages). Without this, `-m digest` fails.
+export PYTHONPATH=/usr/lib
+
+bashio::log.info "Starting calendar/mail digest on 127.0.0.1:8082..."
+exec python3 -u -m digest \
+    --config /data/digest-config.json \
+    --log-level "${LOG_LEVEL}"

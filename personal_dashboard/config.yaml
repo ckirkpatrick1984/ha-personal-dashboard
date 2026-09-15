@@ -1,9 +1,10 @@
 name: Personal Dashboard
-version: "0.1.0"
+version: "0.3.0"
 slug: personal_dashboard
 description: >-
   An at-a-glance daily dashboard (Glance) with a full-featured task manager
-  (Vikunja), running alongside Home Assistant.
+  (Vikunja) and a calendar/mail digest for Google and Microsoft 365 accounts,
+  running alongside Home Assistant.
 url: https://github.com/ckirkpatrick1984/ha-personal-dashboard
 arch:
   - aarch64
@@ -35,6 +36,28 @@ options:
   home_assistant_url: "http://homeassistant/"
   vikunja_token: ""
   timezone: ""
+  google_label: "Personal"
+  google_client_id: ""
+  google_client_secret: ""
+  google_refresh_token: ""
+  google_calendar_ids:
+    - "primary"
+  google_enable_mail: true
+  ics_label: "Personal"
+  ics_url: ""
+  imap_label: "Gmail"
+  imap_host: "imap.gmail.com"
+  imap_username: ""
+  imap_password: ""
+  imap_poll_minutes: 10
+  microsoft_label: "Work"
+  microsoft_client_id: ""
+  microsoft_tenant: "common"
+  microsoft_refresh_token: ""
+  microsoft_enable_mail: true
+  microsoft_focused_only: true
+  digest_poll_minutes: 5
+  digest_days_ahead: 2
   rss_feeds:
     - "https://hnrss.org/frontpage"
   log_level: info
@@ -45,6 +68,28 @@ schema:
   home_assistant_url: url
   vikunja_token: password?
   timezone: str?
+  google_label: str?
+  google_client_id: str?
+  google_client_secret: password?
+  google_refresh_token: password?
+  google_calendar_ids:
+    - str
+  google_enable_mail: bool?
+  ics_label: str?
+  ics_url: password?
+  imap_label: str?
+  imap_host: str?
+  imap_username: str?
+  imap_password: password?
+  imap_poll_minutes: int(5,60)
+  microsoft_label: str?
+  microsoft_client_id: str?
+  microsoft_tenant: str?
+  microsoft_refresh_token: password?
+  microsoft_enable_mail: bool?
+  microsoft_focused_only: bool?
+  digest_poll_minutes: int(1,60)
+  digest_days_ahead: int(1,14)
   rss_feeds:
     - str
   log_level: list(debug|info|warning|error)

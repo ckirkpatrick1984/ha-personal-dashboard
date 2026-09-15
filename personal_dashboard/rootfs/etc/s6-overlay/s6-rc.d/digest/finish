@@ -1,0 +1,13 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+readonly exit_code="${1}"
+
+# Unlike Vikunja, the digest is an optional extra. If it dies, the dashboard is
+# still useful -- the agenda and mail widgets degrade to their cached data and
+# then to a setup prompt. Halting the add-on over it would be a bad trade, so
+# log loudly and let s6 restart the service instead.
+if [[ "${exit_code}" -ne 0 ]] && [[ "${exit_code}" -ne 256 ]]; then
+    bashio::log.warning "Digest sidecar exited with code ${exit_code}; restarting."
+else
+    bashio::log.info "Digest sidecar stopped."
+fi

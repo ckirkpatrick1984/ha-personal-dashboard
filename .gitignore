@@ -1,0 +1,4 @@
+# Byte-code from running or testing the digest sidecar locally. `COPY rootfs /`
+# would otherwise bake stale .pyc files into the image.
+__pycache__/
+*.pyc

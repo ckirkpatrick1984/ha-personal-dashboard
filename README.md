@@ -6,10 +6,14 @@ Assistant, without modifying anything in Home Assistant itself.
 It bundles two open-source projects:
 
 - **[Glance](https://github.com/glanceapp/glance)** — the dashboard: clock,
-  weather, calendar, RSS, bookmarks, service status, and a live task list.
+  weather, agenda, inbox, RSS, bookmarks, service status, and a live task list.
 - **[Vikunja](https://vikunja.io/)** — the task manager behind that list:
   projects, sub-tasks, dependencies, recurring tasks, reminders, labels,
   priorities, Kanban, Gantt and saved filters.
+
+Plus a small dependency-free Python sidecar that merges calendar and unread mail
+from a Google account and a Microsoft 365 account into a single agenda and
+inbox summary. Both are optional; the dashboard works without them.
 
 ## Installation
 
@@ -36,6 +40,11 @@ map: []
 It cannot read or write your Home Assistant configuration, cannot call the
 Home Assistant API, and cannot see your entities. It stores its own data in
 its own add-on volume, which is included in Home Assistant backups.
+
+The calendar/mail sidecar reaches Google and Microsoft outbound over HTTPS and
+listens only on `127.0.0.1` inside the container — it is not a published port,
+and requests only read-only scopes (`calendar.readonly`, `gmail.readonly`,
+`Calendars.Read`, `Mail.Read`).
 
 ## Supported architectures
 

@@ -15,7 +15,7 @@ ARG VIKUNJA_SHA256_amd64=44f55c5620cf90f9f125ee2d2fda31db1946230da6d1dbc0f7943ae
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-RUN apk add --no-cache curl unzip tzdata
+RUN apk add --no-cache curl unzip tzdata python3
 
 RUN set -euo pipefail; \
     case "${BUILD_ARCH}" in \
@@ -47,10 +47,17 @@ RUN set -euo pipefail; \
 
 COPY rootfs /
 
+# The digest sidecar is stdlib-only by design: no pip, no wheels, no build
+# toolchain in the image. Fail the build rather than ship a syntax error that
+# would only surface as a dead service at runtime.
+RUN python3 -m compileall -q /usr/lib/digest
+
 RUN chmod +x \
       /etc/s6-overlay/s6-rc.d/init-dashboard/run \
       /etc/s6-overlay/s6-rc.d/vikunja/run \
       /etc/s6-overlay/s6-rc.d/vikunja/finish \
+      /etc/s6-overlay/s6-rc.d/digest/run \
+      /etc/s6-overlay/s6-rc.d/digest/finish \
       /etc/s6-overlay/s6-rc.d/glance/run \
       /etc/s6-overlay/s6-rc.d/glance/finish
 

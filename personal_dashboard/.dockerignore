@@ -1,0 +1,4 @@
+# Local byte-code must not end up in the image; the Dockerfile compiles the
+# digest sidecar itself with `python3 -m compileall`.
+**/__pycache__
+**/*.pyc

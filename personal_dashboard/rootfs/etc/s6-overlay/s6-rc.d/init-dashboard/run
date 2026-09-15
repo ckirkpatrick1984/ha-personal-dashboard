@@ -88,6 +88,146 @@ sed \
 
 rm -f /tmp/glance-stage1.yml /tmp/rss-feeds.yml
 
+# ---------------------------------------------------------------------------
+# Digest sidecar configuration
+#
+# Written as JSON by Python rather than assembled in bash: refresh tokens and
+# display labels are arbitrary strings, and hand-rolled shell quoting is how you
+# end up with a config file that is silently invalid JSON.
+# ---------------------------------------------------------------------------
+
+digest_opt() {
+    local value
+    value="$(bashio::config "${1}")"
+    [[ "${value}" == "null" ]] && value=""
+    printf '%s' "${value}"
+}
+
+GOOGLE_CALENDAR_IDS=""
+if bashio::config.has_value 'google_calendar_ids'; then
+    GOOGLE_CALENDAR_IDS="$(bashio::config 'google_calendar_ids' | tr '\n' ',')"
+fi
+
+DIGEST_TIMEZONE="${TIMEZONE}" \
+DIGEST_POLL_MINUTES="$(digest_opt 'digest_poll_minutes')" \
+DIGEST_DAYS_AHEAD="$(digest_opt 'digest_days_ahead')" \
+GOOGLE_LABEL="$(digest_opt 'google_label')" \
+GOOGLE_CLIENT_ID="$(digest_opt 'google_client_id')" \
+GOOGLE_CLIENT_SECRET="$(digest_opt 'google_client_secret')" \
+GOOGLE_REFRESH_TOKEN="$(digest_opt 'google_refresh_token')" \
+GOOGLE_CALENDAR_IDS="${GOOGLE_CALENDAR_IDS}" \
+GOOGLE_ENABLE_MAIL="$(bashio::config.true 'google_enable_mail' && echo 1 || echo 0)" \
+ICS_LABEL="$(digest_opt 'ics_label')" \
+ICS_URL="$(digest_opt 'ics_url')" \
+IMAP_LABEL="$(digest_opt 'imap_label')" \
+IMAP_HOST="$(digest_opt 'imap_host')" \
+IMAP_USERNAME="$(digest_opt 'imap_username')" \
+IMAP_PASSWORD="$(digest_opt 'imap_password')" \
+IMAP_POLL_MINUTES="$(digest_opt 'imap_poll_minutes')" \
+MS_LABEL="$(digest_opt 'microsoft_label')" \
+MS_CLIENT_ID="$(digest_opt 'microsoft_client_id')" \
+MS_TENANT="$(digest_opt 'microsoft_tenant')" \
+MS_REFRESH_TOKEN="$(digest_opt 'microsoft_refresh_token')" \
+MS_ENABLE_MAIL="$(bashio::config.true 'microsoft_enable_mail' && echo 1 || echo 0)" \
+MS_FOCUSED_ONLY="$(bashio::config.true 'microsoft_focused_only' && echo 1 || echo 0)" \
+python3 - <<'PY' > /data/digest-config.json
+import json
+import os
+
+
+def env(key, default=""):
+    return (os.environ.get(key) or default).strip()
+
+
+def as_int(key, default, low, high):
+    try:
+        return max(low, min(high, int(env(key) or default)))
+    except ValueError:
+        return default
+
+
+accounts = []
+
+# An account is only included when it is fully credentialed. A half-configured
+# account would otherwise fail every poll and fill the log with noise.
+if env("GOOGLE_CLIENT_ID") and env("GOOGLE_CLIENT_SECRET") and env("GOOGLE_REFRESH_TOKEN"):
+    calendar_ids = [c.strip() for c in env("GOOGLE_CALENDAR_IDS").split(",") if c.strip()]
+    accounts.append({
+        "id": "personal",
+        "label": env("GOOGLE_LABEL", "Personal"),
+        "provider": "google",
+        "client_id": env("GOOGLE_CLIENT_ID"),
+        "client_secret": env("GOOGLE_CLIENT_SECRET"),
+        "refresh_token": env("GOOGLE_REFRESH_TOKEN"),
+        "calendar_ids": calendar_ids or ["primary"],
+        "mail": env("GOOGLE_ENABLE_MAIL", "1") != "0",
+    })
+
+# An iCalendar URL needs no Cloud project at all, which makes it the low-effort
+# way to get a calendar. The cost is freshness: Google serves that export from
+# its own cache, commonly hours behind, so it suits a once-a-day agenda and not
+# "has this meeting just moved". The URL is itself a credential.
+if env("ICS_URL"):
+    accounts.append({
+        "id": "ics",
+        "label": env("ICS_LABEL", "Personal"),
+        "provider": "ics",
+        "url": env("ICS_URL"),
+    })
+
+# IMAP is the easy path for personal Gmail: an app password avoids Google's
+# *restricted* gmail.readonly scope entirely. It is not offered for work
+# Microsoft accounts because Exchange Online has disabled basic auth.
+if env("IMAP_USERNAME") and env("IMAP_PASSWORD"):
+    accounts.append({
+        "id": "imap",
+        "label": env("IMAP_LABEL", "Gmail"),
+        "provider": "imap",
+        "host": env("IMAP_HOST", "imap.gmail.com"),
+        "username": env("IMAP_USERNAME"),
+        "password": env("IMAP_PASSWORD"),
+        "web_url": "https://mail.google.com/mail/u/0/#inbox",
+        "min_poll_seconds": as_int("IMAP_POLL_MINUTES", 10, 5, 60) * 60,
+    })
+
+if env("MS_CLIENT_ID") and env("MS_REFRESH_TOKEN"):
+    accounts.append({
+        "id": "work",
+        "label": env("MS_LABEL", "Work"),
+        "provider": "microsoft",
+        "client_id": env("MS_CLIENT_ID"),
+        "tenant": env("MS_TENANT", "common"),
+        "refresh_token": env("MS_REFRESH_TOKEN"),
+        "mail": env("MS_ENABLE_MAIL", "1") != "0",
+        "focused_only": env("MS_FOCUSED_ONLY", "1") != "0",
+    })
+
+
+print(json.dumps({
+    "listen_host": "127.0.0.1",
+    "listen_port": 8082,
+    "timezone": env("DIGEST_TIMEZONE", "UTC"),
+    "poll_seconds": as_int("DIGEST_POLL_MINUTES", 5, 1, 60) * 60,
+    "days_ahead": as_int("DIGEST_DAYS_AHEAD", 2, 1, 14),
+    "max_events": 25,
+    "max_messages_per_account": 10,
+    "max_messages": 12,
+    "cache_path": "/data/digest-cache.json",
+    "accounts": accounts,
+}, indent=2))
+PY
+
+chmod 600 /data/digest-config.json
+
+DIGEST_ACCOUNTS="$(python3 -c 'import json;print(len(json.load(open("/data/digest-config.json"))["accounts"]))')"
+if [[ "${DIGEST_ACCOUNTS}" == "0" ]]; then
+    bashio::log.warning "No calendar/mail accounts configured."
+    bashio::log.warning "Run scripts/authorize-google.py and/or scripts/authorize-microsoft.py,"
+    bashio::log.warning "then paste the results into this add-on's options."
+else
+    bashio::log.info "Digest configured with ${DIGEST_ACCOUNTS} account(s)."
+fi
+
 if ! bashio::config.has_value 'vikunja_token'; then
     bashio::log.warning "No vikunja_token set - the task widget will show an error."
     bashio::log.warning "Register at ${VIKUNJA_PUBLIC_URL}, create an API token with"
